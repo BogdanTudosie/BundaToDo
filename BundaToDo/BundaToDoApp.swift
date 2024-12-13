@@ -9,24 +9,21 @@ import SwiftUI
 import SwiftData
 
 @main
-struct BundaToDoApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
+struct YourApp: App {
+    let container: ModelContainer
+    
+    init() {
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            container = try ModelContainer(for: Item.self)
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            fatalError("Failed to initialize container")
         }
-    }()
-
+    }
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            let repository = ItemRepositoryDefault(modelContext: container.mainContext)
+            ContentView(viewModel: ItemListViewModel(repository: repository))
         }
-        .modelContainer(sharedModelContainer)
     }
 }

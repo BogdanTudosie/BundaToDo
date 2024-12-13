@@ -9,53 +9,88 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @ObservedObject var viewModel: ItemListViewModel
+    @State var columnVisibility = NavigationSplitViewVisibility.doubleColumn
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        NavigationSplitView(
+            columnVisibility: $columnVisibility
+        ) {
+            // Sidebar (Master)
+            List(viewModel.items, selection: $viewModel.selectedItemId) { item in
+                NavigationLink(value: item.id) {
+                    Text(item.name)
                 }
-                .onDelete(perform: deleteItems)
             }
+            .navigationTitle("Tasks")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
                 }
                 ToolbarItem {
-                    Button(action: addItem) {
+                    Button(action: showAddItemPopover) {
                         Label("Add Item", systemImage: "plus")
                     }
                 }
             }
         } detail: {
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+            // Detail
+            if let selectedId = viewModel.selectedItemId,
+               let selectedItem = viewModel.items.first(where: { $0.id == selectedId }) {
+                ItemDetailView(viewModel: ItemDetailViewModel(
+                    item: selectedItem,
+                    repository: viewModel.itemRepository
+                ))
+            } else {
+                Text("Select a task")
+                    .foregroundStyle(.secondary)
             }
         }
     }
+    
+    
+    private func deleteItems(offsets: IndexSet) {
+        withAnimation {
+            viewModel.deleteItem(offsets: offsets)
+        }
+    }
+    
+    private func showAddItemPopover() {
+        viewModel.togglePopover()
+    }
 }
 
+// Separate preview container helper
+struct PreviewContainer {
+    @MainActor
+    static var container: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            let container = try ModelContainer(for: Item.self, configurations: config)
+            
+            // Add preview items
+            let items = [
+                Item(name: "Wash the dishes", text: "Please wash the dishes", taskStatus: .new),
+                Item(name: "Walk the Dog", text: "Walk the Husky", taskStatus: .completed)
+            ]
+            
+            let context = container.mainContext
+            items.forEach { context.insert($0) }
+            try context.save()
+            
+            return container
+        } catch {
+            fatalError("Failed to create preview container")
+        }
+    }()
+}
+
+// Updated preview
 #Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+    let container = PreviewContainer.container
+    let repository = ItemRepositoryDefault(modelContext: container.mainContext)
+    let viewModel = ItemListViewModel(repository: repository)
+    
+    return ContentView(viewModel: viewModel)
+        .modelContainer(PreviewContainer.container)
 }
